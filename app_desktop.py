@@ -17,6 +17,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
+from PIL import Image, ImageTk
 
 # ── Configuracion ──────────────────────────────────────────────────────────────
 
@@ -26,17 +27,33 @@ SESSION_DIR = os.path.join(os.getcwd(), "chrome_session")
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
+
+# ── Assets ────────────────────────────────────────────────────────────────────
+
+def _assets_dir() -> str:
+    """Devuelve la carpeta de assets relativa al ejecutable o al script."""
+    base = getattr(__import__('sys'), '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, "assets")
+
+
+def _load_image(filename: str, size: tuple) -> "ImageTk.PhotoImage":
+    path = os.path.join(_assets_dir(), filename)
+    img = Image.open(path).convert("RGBA").resize(size, Image.Resampling.LANCZOS)
+    return ImageTk.PhotoImage(img)
+
+
 # ── Colores ────────────────────────────────────────────────────────────────────
 
-BG_BASE     = "#0f0f13"
-BG_CARD     = "#16161d"
+BG_BASE = "#0f0f13"
+BG_CARD = "#16161d"
 BG_ELEVATED = "#1e1e28"
-ACCENT      = "#7c6af7"
-TEAL        = "#00d4aa"
-PINK        = "#f72585"
-TEXT_PRI    = "#f0f0f5"
-TEXT_SEC    = "#8888aa"
-BORDER      = "#2a2a38"
+ACCENT = "#7c6af7"
+TEAL = "#00d4aa"
+PINK = "#f72585"
+TEXT_PRI = "#f0f0f5"
+TEXT_SEC = "#8888aa"
+BORDER = "#2a2a38"
+
 
 # ── Config local ───────────────────────────────────────────────────────────────
 
@@ -46,23 +63,20 @@ def load_config() -> dict:
             return json.load(f)
     return {}
 
+
 def save_config(data: dict):
     existing = load_config()
     existing.update(data)
     with open(CONFIG_FILE, "w") as f:
         json.dump(existing, f, indent=2)
 
+
 # ── API Client ─────────────────────────────────────────────────────────────────
 
 class APIClient:
     def __init__(self):
-        cfg = load_config()
-        self.base_url = cfg.get("backend_url", "http://localhost:8000")
+        self.base_url = "http://40.67.149.227:8000"
         self.token: Optional[str] = None
-
-    def set_base_url(self, url: str):
-        self.base_url = url.rstrip("/")
-        save_config({"backend_url": self.base_url})
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
@@ -157,13 +171,13 @@ class APIClient:
             clean = []
             for c in cookies:
                 clean.append({
-                    "name":     c.get("name", ""),
-                    "value":    c.get("value", ""),
-                    "domain":   c.get("domain", ".instagram.com"),
-                    "path":     c.get("path", "/"),
-                    "secure":   c.get("secure", False),
+                    "name": c.get("name", ""),
+                    "value": c.get("value", ""),
+                    "domain": c.get("domain", ".instagram.com"),
+                    "path": c.get("path", "/"),
+                    "secure": c.get("secure", False),
                     "httpOnly": c.get("httpOnly", False),
-                    "expiry":   c.get("expiry"),
+                    "expiry": c.get("expiry"),
                 })
             res = requests.post(
                 self._url("/sync/cookies"),
@@ -184,7 +198,9 @@ class APIClient:
         except Exception:
             return False
 
+
 api = APIClient()
+
 
 # ── Scraper Core ───────────────────────────────────────────────────────────────
 
@@ -211,7 +227,7 @@ def run_scraping(user_id: int, ig_username: str, log_fn, done_fn, wait_login_fn,
         log_fn("Modo: visible")
 
     service = Service(ChromeDriverManager().install())
-    driver  = webdriver.Chrome(service=service, options=options)
+    driver = webdriver.Chrome(service=service, options=options)
 
     try:
         driver.get(f"https://www.instagram.com/{ig_username}/")
@@ -233,8 +249,8 @@ def run_scraping(user_id: int, ig_username: str, log_fn, done_fn, wait_login_fn,
                 return
             else:
                 log_fn("Requiere inicio de sesion. Esperando accion del usuario...")
-                wait_login_fn() # Fix Error 3: Pausa el hilo aquí hasta que el usuario le da OK en la UI
-                
+                wait_login_fn()  # Fix Error 3: Pausa el hilo aquí hasta que el usuario le da OK en la UI
+
                 log_fn("Verificando autenticacion...")
                 driver.get(f"https://www.instagram.com/{ig_username}/")
                 try:
@@ -258,6 +274,7 @@ def run_scraping(user_id: int, ig_username: str, log_fn, done_fn, wait_login_fn,
     finally:
         # Ahora el driver se cierra de manera segura al final de todo el flujo
         driver.quit()
+
 
 def _continuar_scraping(driver, user_id: int, ig_username: str, log_fn, done_fn):
     """
@@ -294,8 +311,8 @@ def _continuar_scraping(driver, user_id: int, ig_username: str, log_fn, done_fn)
         log_fn("Modal encontrado. Capturando seguidores...")
 
         seguidores = {}
-        intentos   = 0
-        max_int    = max(8, min(30, total_seg // 50)) if total_seg else 10
+        intentos = 0
+        max_int = max(8, min(30, total_seg // 50)) if total_seg else 10
 
         def extraer():
             try:
@@ -398,7 +415,7 @@ def extract_and_upload_cookies(driver: webdriver.Chrome, log_fn) -> tuple[bool, 
         driver.get("https://www.instagram.com/")
         time.sleep(2)
         all_cookies = driver.get_cookies()
-        ig_cookies  = [c for c in all_cookies if "instagram.com" in c.get("domain", "")]
+        ig_cookies = [c for c in all_cookies if "instagram.com" in c.get("domain", "")]
         if not ig_cookies:
             return False, "No se encontraron cookies de Instagram."
         log_fn(f"Cookies extraidas: {len(ig_cookies)}")
@@ -418,10 +435,10 @@ class App(ctk.CTk):
         self.resizable(False, False)
         self.configure(fg_color=BG_BASE)
 
-        self.current_user         = None
+        self.current_user = None
         self.scraping_count_today = 0
-        self.last_scrape_time     = None
-        
+        self.last_scrape_time = None
+
         # Fix Error 1: Historial en memoria para no perderlo al cambiar de pestaña
         self.log_history = ""
 
@@ -430,15 +447,17 @@ class App(ctk.CTk):
 
     @staticmethod
     def _safe(widget, **kwargs):
-        try: widget.configure(**kwargs)
-        except Exception: pass
+        try:
+            widget.configure(**kwargs)
+        except Exception:
+            pass
 
     def _setup_fonts(self):
         self.font_title = ctk.CTkFont(family="Segoe UI", size=22, weight="bold")
-        self.font_sub   = ctk.CTkFont(family="Segoe UI", size=13)
+        self.font_sub = ctk.CTkFont(family="Segoe UI", size=13)
         self.font_label = ctk.CTkFont(family="Segoe UI", size=12)
-        self.font_mono  = ctk.CTkFont(family="Consolas", size=11)
-        self.font_btn   = ctk.CTkFont(family="Segoe UI", size=13, weight="bold")
+        self.font_mono = ctk.CTkFont(family="Consolas", size=11)
+        self.font_btn = ctk.CTkFont(family="Segoe UI", size=13, weight="bold")
 
     def _clear(self):
         for w in self.winfo_children(): w.destroy()
@@ -449,62 +468,114 @@ class App(ctk.CTk):
         self._clear()
         cfg = load_config()
 
-        frame = ctk.CTkFrame(self, fg_color=BG_CARD, corner_radius=16, width=420, height=460)
-        frame.place(relx=0.5, rely=0.5, anchor="center")
-        frame.pack_propagate(False)
+        self.configure(fg_color="#0a1628")
+        self.geometry("1000x640")
 
-        ctk.CTkLabel(frame, text="RRSS Analytics", font=self.font_title, text_color=TEXT_PRI).pack(pady=(36, 4))
-        ctk.CTkLabel(frame, text="Inicia sesion para continuar", font=self.font_sub, text_color=TEXT_SEC).pack(pady=(0, 8))
+        # Panel izquierdo
+        left = ctk.CTkFrame(self, fg_color="#0d1f3c", corner_radius=0, width=480)
+        left.pack(side="left", fill="y")
+        left.pack_propagate(False)
 
-        ctk.CTkLabel(frame, text="URL del backend", font=self.font_label, text_color=TEXT_SEC, anchor="w").pack(padx=36, fill="x")
-        url_entry = ctk.CTkEntry(frame, height=36, fg_color=BG_ELEVATED, border_color=BORDER, text_color=TEXT_PRI)
-        url_entry.insert(0, cfg.get("backend_url", "http://localhost:8000"))
-        url_entry.pack(padx=36, fill="x", pady=(2, 14))
+        # Logo
+        try:
+            logo_img = _load_image("logo.png", (38, 38))
+            self._logo_img = logo_img
+            logo_row = ctk.CTkFrame(left, fg_color="transparent")
+            logo_row.pack(anchor="nw", padx=24, pady=(22, 0))
+            ctk.CTkLabel(logo_row, image=logo_img, text="").pack(side="left")
+            lbl_f = ctk.CTkFrame(logo_row, fg_color="transparent")
+            lbl_f.pack(side="left", padx=(8, 0))
+            ctk.CTkLabel(lbl_f, text="DEVDATEP", font=ctk.CTkFont("Segoe UI", 13, "bold"), text_color="#ffffff").pack(
+                anchor="w")
+            ctk.CTkLabel(lbl_f, text="CONSULTING", font=ctk.CTkFont("Segoe UI", 10), text_color="#7fb3d3").pack(
+                anchor="w")
+        except Exception:
+            ctk.CTkLabel(left, text="DEVDATEP CONSULTING", font=self.font_btn, text_color="#ffffff").pack(anchor="nw",
+                                                                                                          padx=24,
+                                                                                                          pady=(22, 0))
 
-        ctk.CTkLabel(frame, text="Correo", font=self.font_label, text_color=TEXT_SEC, anchor="w").pack(padx=36, fill="x")
-        email_entry = ctk.CTkEntry(frame, height=38, fg_color=BG_ELEVATED, border_color=BORDER, text_color=TEXT_PRI)
+        # Robot grande
+        try:
+            robot_img = _load_image("robot_large.png", (280, 300))
+            self._robot_img = robot_img
+            ctk.CTkLabel(left, image=robot_img, text="").place(relx=0.5, rely=0.56, anchor="center")
+        except Exception:
+            pass
+
+        # Elipse decorativa
+        cv = ctk.CTkCanvas(left, width=320, height=80, bg="#0d1f3c", highlightthickness=0)
+        cv.place(relx=0.5, rely=0.82, anchor="center")
+        cv.create_oval(20, 18, 300, 72, fill="#0e6655", outline="")
+
+        # Panel derecho
+        right = ctk.CTkFrame(self, fg_color="#f4f6f8", corner_radius=0)
+        right.pack(side="left", fill="both", expand=True)
+        right.pack_propagate(False)
+
+        # Robot pequeño esquina superior derecha
+        try:
+            robot_s = _load_image("robot_small.png", (80, 80))
+            self._robot_s = robot_s
+            ctk.CTkLabel(right, image=robot_s, text="", fg_color="transparent").place(relx=1.0, rely=0.0, anchor="ne",
+                                                                                      x=-10, y=5)
+        except Exception:
+            pass
+
+        # Card login
+        card = ctk.CTkFrame(right, fg_color="#ffffff", corner_radius=20, border_width=1, border_color="#e2e8f0",
+                            width=380, height=400)
+        card.pack_propagate(False)
+        card.place(relx=0.5, rely=0.5, anchor="center")
+
+        ctk.CTkLabel(card, text="Iniciar sesion",
+                     font=ctk.CTkFont("Segoe UI", 22, "bold"), text_color="#1a202c").pack(pady=(36, 24))
+
+        ctk.CTkLabel(card, text="Correo electronico",
+                     font=ctk.CTkFont("Segoe UI", 12), text_color="#4a5568", anchor="w").pack(padx=36, fill="x")
+        email_entry = ctk.CTkEntry(card, height=42, fg_color="#f7fafc", border_color="#cbd5e0",
+                                   text_color="#1a202c", corner_radius=8,
+                                   placeholder_text="tu@email.com", placeholder_text_color="#a0aec0")
         email_entry.insert(0, cfg.get("last_email", ""))
-        email_entry.pack(padx=36, fill="x", pady=(2, 12))
+        email_entry.pack(padx=36, fill="x", pady=(4, 14))
 
-        ctk.CTkLabel(frame, text="Contrasena", font=self.font_label, text_color=TEXT_SEC, anchor="w").pack(padx=36, fill="x")
-        pass_entry = ctk.CTkEntry(frame, height=38, fg_color=BG_ELEVATED, border_color=BORDER, text_color=TEXT_PRI, show="*")
-        pass_entry.pack(padx=36, fill="x", pady=(2, 12))
+        ctk.CTkLabel(card, text="Contrasena",
+                     font=ctk.CTkFont("Segoe UI", 12), text_color="#4a5568", anchor="w").pack(padx=36, fill="x")
+        pass_entry = ctk.CTkEntry(card, height=42, fg_color="#f7fafc", border_color="#cbd5e0",
+                                  text_color="#1a202c", corner_radius=8, show="*",
+                                  placeholder_text="••••••••", placeholder_text_color="#a0aec0")
+        pass_entry.pack(padx=36, fill="x", pady=(4, 6))
 
-        err_label = ctk.CTkLabel(frame, text="", font=self.font_label, text_color=PINK)
-        err_label.pack()
+        err_label = ctk.CTkLabel(card, text="", font=ctk.CTkFont("Segoe UI", 11), text_color="#e53e3e")
+        err_label.pack(pady=(4, 0))
 
         def do_login():
-            backend_url = url_entry.get().strip().rstrip("/")
-            email       = email_entry.get().strip()
-            pwd         = pass_entry.get()
-
-            if not backend_url or not email or not pwd:
+            email = email_entry.get().strip()
+            pwd = pass_entry.get()
+            if not email or not pwd:
                 err_label.configure(text="Completa todos los campos.")
                 return
-
-            api.set_base_url(backend_url)
-
             if not api.check_connection():
-                err_label.configure(text="No se pudo conectar al backend.")
+                err_label.configure(text="No se pudo conectar al servidor.")
                 return
-
             result = api.login(email, pwd)
             if not result:
                 err_label.configure(text="Credenciales incorrectas.")
                 return
-
             user = api.me()
             if not user:
                 err_label.configure(text="Error obteniendo datos del usuario.")
                 return
-
             save_config({"last_email": email})
             self.current_user = user
+            self.geometry("900x620")
+            self.configure(fg_color=BG_BASE)
             self._show_main()
 
         pass_entry.bind("<Return>", lambda e: do_login())
-        ctk.CTkButton(frame, text="Iniciar sesion", font=self.font_btn, fg_color=ACCENT, hover_color="#6355d4",
-                     height=42, command=do_login).pack(padx=36, fill="x", pady=(4, 32))
+        ctk.CTkButton(card, text="Continuar",
+                      font=ctk.CTkFont("Segoe UI", 14, "bold"),
+                      fg_color="#2d3748", hover_color="#1a202c", text_color="white",
+                      height=46, corner_radius=10, command=do_login).pack(padx=36, fill="x", pady=(10, 0))
 
     # ── Main ───────────────────────────────────────────────────────────────────
 
@@ -522,7 +593,7 @@ class App(ctk.CTk):
         self.content = ctk.CTkFrame(self, fg_color=BG_BASE, corner_radius=0)
         self.content.pack(side="left", fill="both", expand=True)
 
-        nav_items = [("Scraping", self._build_scraping), ("Configuracion", self._build_config)]
+        nav_items = [("Scraping", self._build_scraping)]
         if user.get("role") == "admin":
             nav_items.append(("Usuarios", self._build_users))
 
@@ -532,16 +603,21 @@ class App(ctk.CTk):
             for w in self.content.winfo_children(): w.destroy()
             _builder()
             for n, b in nav_btns.items():
-                b.configure(fg_color=ACCENT if n == _name else "transparent", text_color=TEXT_PRI if n == _name else TEXT_SEC)
+                b.configure(fg_color=ACCENT if n == _name else "transparent",
+                            text_color=TEXT_PRI if n == _name else TEXT_SEC)
 
         for name, builder in nav_items:
-            btn = ctk.CTkButton(sidebar, text=name, font=self.font_btn, fg_color="transparent", text_color=TEXT_SEC, hover_color=BG_ELEVATED, height=42, anchor="w",
-                command=lambda n=name, b=builder: switch(n, b))
+            btn = ctk.CTkButton(sidebar, text=name, font=self.font_btn, fg_color="transparent", text_color=TEXT_SEC,
+                                hover_color=BG_ELEVATED, height=42, anchor="w",
+                                command=lambda n=name, b=builder: switch(n, b))
             btn.pack(padx=12, fill="x", pady=2)
             nav_btns[name] = btn
 
-        ctk.CTkLabel(sidebar, text=user.get("full_name") or user.get("email", ""), font=self.font_label, text_color=TEXT_SEC, wraplength=160).place(relx=0.5, rely=0.88, anchor="center")
-        ctk.CTkButton(sidebar, text="Salir", font=self.font_label, fg_color="transparent", text_color=TEXT_SEC, hover_color=BG_ELEVATED, height=32, command=self._logout).place(relx=0.5, rely=0.94, anchor="center")
+        ctk.CTkLabel(sidebar, text=user.get("full_name") or user.get("email", ""), font=self.font_label,
+                     text_color=TEXT_SEC, wraplength=160).place(relx=0.5, rely=0.88, anchor="center")
+        ctk.CTkButton(sidebar, text="Salir", font=self.font_label, fg_color="transparent", text_color=TEXT_SEC,
+                      hover_color=BG_ELEVATED, height=32, command=self._logout).place(relx=0.5, rely=0.94,
+                                                                                      anchor="center")
 
         switch("Scraping", self._build_scraping)
         nav_btns["Scraping"].configure(fg_color=ACCENT, text_color=TEXT_PRI)
@@ -549,12 +625,13 @@ class App(ctk.CTk):
     # ── Scraping panel ─────────────────────────────────────────────────────────
 
     def _build_scraping(self):
-        user  = self.current_user
+        user = self.current_user
         frame = ctk.CTkFrame(self.content, fg_color="transparent")
         frame.pack(fill="both", expand=True, padx=28, pady=28)
 
         ctk.CTkLabel(frame, text="Scraping de Instagram", font=self.font_title, text_color=TEXT_PRI).pack(anchor="w")
-        ctk.CTkLabel(frame, text="Captura la lista de seguidores de tu cuenta", font=self.font_sub, text_color=TEXT_SEC).pack(anchor="w", pady=(2, 20))
+        ctk.CTkLabel(frame, text="Captura la lista de seguidores de tu cuenta", font=self.font_sub,
+                     text_color=TEXT_SEC).pack(anchor="w", pady=(2, 20))
 
         # Cuenta IG
         card = ctk.CTkFrame(frame, fg_color=BG_CARD, corner_radius=12)
@@ -568,7 +645,8 @@ class App(ctk.CTk):
         ig_row = ctk.CTkFrame(inner, fg_color="transparent")
         ig_row.pack(fill="x", pady=(4, 0))
 
-        ig_entry = ctk.CTkEntry(ig_row, height=38, fg_color=BG_ELEVATED, border_color=BORDER, text_color=TEXT_PRI, placeholder_text="username sin @")
+        ig_entry = ctk.CTkEntry(ig_row, height=38, fg_color=BG_ELEVATED, border_color=BORDER, text_color=TEXT_PRI,
+                                placeholder_text="username sin @")
         ig_entry.pack(side="left", fill="x", expand=True)
         if user.get("ig_username"): ig_entry.insert(0, user["ig_username"])
 
@@ -585,7 +663,8 @@ class App(ctk.CTk):
                 ig_status.configure(text="Error al guardar", text_color=PINK)
             self.after(2000, lambda: self._safe(ig_status, text=""))
 
-        ctk.CTkButton(ig_row, text="Guardar", font=self.font_btn, fg_color=ACCENT, hover_color="#6355d4", width=90, height=38, command=save_ig).pack(side="left", padx=(8, 0))
+        ctk.CTkButton(ig_row, text="Guardar", font=self.font_btn, fg_color=ACCENT, hover_color="#6355d4", width=90,
+                      height=38, command=save_ig).pack(side="left", padx=(8, 0))
 
         # Controles
         ctrl_card = ctk.CTkFrame(frame, fg_color=BG_CARD, corner_radius=12)
@@ -594,13 +673,17 @@ class App(ctk.CTk):
         ctrl_row = ctk.CTkFrame(ctrl_card, fg_color="transparent")
         ctrl_row.pack(fill="x", padx=20, pady=16)
 
-        btn_visible = ctk.CTkButton(ctrl_row, text="Primer login (visible)", font=self.font_btn, fg_color=BG_ELEVATED, text_color=TEXT_PRI, hover_color=BORDER, height=40, width=200)
+        btn_visible = ctk.CTkButton(ctrl_row, text="Primer login (visible)", font=self.font_btn, fg_color=BG_ELEVATED,
+                                    text_color=TEXT_PRI, hover_color=BORDER, height=40, width=200)
         btn_visible.pack(side="left", padx=(0, 10))
 
-        btn_scrape = ctk.CTkButton(ctrl_row, text="Ejecutar scraping", font=self.font_btn, fg_color=TEAL, text_color="#000", hover_color="#00b899", height=40, width=180)
+        btn_scrape = ctk.CTkButton(ctrl_row, text="Ejecutar scraping", font=self.font_btn, fg_color=TEAL,
+                                   text_color="#000", hover_color="#00b899", height=40, width=180)
         btn_scrape.pack(side="left")
 
-        btn_sync_session = ctk.CTkButton(ctrl_row, text="Sincronizar sesion con servidor", font=self.font_btn, fg_color=ACCENT, text_color=TEXT_PRI, hover_color="#6355d4", height=40, width=240)
+        btn_sync_session = ctk.CTkButton(ctrl_row, text="Sincronizar sesion con servidor", font=self.font_btn,
+                                         fg_color=ACCENT, text_color=TEXT_PRI, hover_color="#6355d4", height=40,
+                                         width=240)
         btn_sync_session.pack(side="left", padx=(10, 0))
 
         scrape_status = ctk.CTkLabel(ctrl_row, text="", font=self.font_label, text_color=TEXT_SEC)
@@ -610,11 +693,13 @@ class App(ctk.CTk):
         log_card = ctk.CTkFrame(frame, fg_color=BG_CARD, corner_radius=12)
         log_card.pack(fill="both", expand=True)
 
-        ctk.CTkLabel(log_card, text="Log", font=self.font_label, text_color=TEXT_SEC).pack(anchor="w", padx=20, pady=(12, 0))
+        ctk.CTkLabel(log_card, text="Log", font=self.font_label, text_color=TEXT_SEC).pack(anchor="w", padx=20,
+                                                                                           pady=(12, 0))
 
-        log_box = ctk.CTkTextbox(log_card, fg_color=BG_ELEVATED, text_color=TEXT_PRI, font=self.font_mono, corner_radius=8, border_width=0)
+        log_box = ctk.CTkTextbox(log_card, fg_color=BG_ELEVATED, text_color=TEXT_PRI, font=self.font_mono,
+                                 corner_radius=8, border_width=0)
         log_box.pack(fill="both", expand=True, padx=20, pady=(4, 20))
-        
+
         # Volcar historial de logs guardado en memoria (Fix Error 1)
         log_box.insert("end", self.log_history)
         log_box.configure(state="disabled")
@@ -622,13 +707,14 @@ class App(ctk.CTk):
         def log(msg: str):
             ts = datetime.now().strftime("%H:%M:%S")
             line = f"[{ts}] {msg}\n"
-            self.log_history += line # Guardar persistencia
+            self.log_history += line  # Guardar persistencia
             try:
                 log_box.configure(state="normal")
                 log_box.insert("end", line)
                 log_box.see("end")
                 log_box.configure(state="disabled")
-            except: pass
+            except:
+                pass
 
         def set_ui_state(state):
             """Bloquea botones durante ejecucion"""
@@ -639,11 +725,14 @@ class App(ctk.CTk):
         def wait_for_login():
             """Fix Error 3: Hilo bloqueante que avisa a UI que solicite Login manual"""
             ev = threading.Event()
+
             def ask():
-                messagebox.showinfo("Accion requerida", "1. Inicia sesion en Instagram en la ventana de Chrome.\n2. Cuando veas tu perfil cargado, presiona OK en este mensaje para continuar.")
+                messagebox.showinfo("Accion requerida",
+                                    "1. Inicia sesion en Instagram en la ventana de Chrome.\n2. Cuando veas tu perfil cargado, presiona OK en este mensaje para continuar.")
                 ev.set()
+
             self.after(0, ask)
-            ev.wait() # Pausa el proceso en background hasta dar OK
+            ev.wait()  # Pausa el proceso en background hasta dar OK
 
         def can_scrape() -> tuple[bool, str]:
             if self.scraping_count_today >= 3: return False, "Limite diario alcanzado (3/3)"
@@ -657,7 +746,8 @@ class App(ctk.CTk):
             if result is True:
                 self.scraping_count_today += 1
                 self.last_scrape_time = datetime.now()
-                self.after(0, lambda: scrape_status.configure(text=f"Completado ({self.scraping_count_today}/3 hoy)", text_color=TEAL))
+                self.after(0, lambda: scrape_status.configure(text=f"Completado ({self.scraping_count_today}/3 hoy)",
+                                                              text_color=TEAL))
             elif result is False:
                 self.after(0, lambda: scrape_status.configure(text="Error en el scraping", text_color=PINK))
 
@@ -685,7 +775,8 @@ class App(ctk.CTk):
             set_ui_state("disabled")
             scrape_status.configure(text="Ejecutando...", text_color=TEXT_SEC)
             log(f"Iniciando scraping para @{ig}...")
-            threading.Thread(target=run_scraping, args=(user["id"], ig, log, on_done, wait_for_login, True), daemon=True).start()
+            threading.Thread(target=run_scraping, args=(user["id"], ig, log, on_done, wait_for_login, True),
+                             daemon=True).start()
 
         def start_visible():
             saved, ig = save_ig_if_needed()
@@ -694,7 +785,8 @@ class App(ctk.CTk):
             set_ui_state("disabled")
             scrape_status.configure(text="Esperando login...", text_color=TEXT_SEC)
             log(f"Abriendo Chrome para @{ig}...")
-            threading.Thread(target=run_scraping, args=(user["id"], ig, log, on_done, wait_for_login, False), daemon=True).start()
+            threading.Thread(target=run_scraping, args=(user["id"], ig, log, on_done, wait_for_login, False),
+                             daemon=True).start()
 
         btn_scrape.configure(command=start_scraping)
         btn_visible.configure(command=start_visible)
@@ -716,13 +808,14 @@ class App(ctk.CTk):
                 options.add_argument("--disable-notifications")
                 options.add_argument("--disable-blink-features=AutomationControlled")
                 options.add_argument("--window-size=1280,800")
-                
-                driver  = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+                driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
                 try:
                     # Fix Error 2: Revisa la pagina de inicio, no te empuja al login
                     driver.get("https://www.instagram.com/")
-                    WebDriverWait(driver, 10).until(lambda d: d.execute_script("return document.readyState") == "complete")
+                    WebDriverWait(driver, 10).until(
+                        lambda d: d.execute_script("return document.readyState") == "complete")
                     time.sleep(3)
 
                     if "login" in driver.current_url:
@@ -733,7 +826,8 @@ class App(ctk.CTk):
 
                     try:
                         driver.get(f"https://www.instagram.com/{ig}/")
-                        WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/followers/')]")))
+                        WebDriverWait(driver, 15).until(
+                            EC.presence_of_element_located((By.XPATH, "//a[contains(@href, '/followers/')]")))
                         log("Sesion activa confirmada. Extrayendo cookies...")
                     except TimeoutException:
                         log("No se detecto sesion activa. Intenta de nuevo.")
@@ -748,8 +842,10 @@ class App(ctk.CTk):
                     log(f"Error: {e}")
                     self.after(0, lambda: on_done(False))
                 finally:
-                    try: driver.quit()
-                    except: pass
+                    try:
+                        driver.quit()
+                    except:
+                        pass
 
             threading.Thread(target=_do_sync, daemon=True).start()
 
@@ -761,32 +857,19 @@ class App(ctk.CTk):
         frame = ctk.CTkFrame(self.content, fg_color="transparent")
         frame.pack(fill="both", expand=True, padx=28, pady=28)
 
-        ctk.CTkLabel(frame, text="Configuracion", font=self.font_title, text_color=TEXT_PRI).pack(anchor="w")
-        ctk.CTkLabel(frame, text="Conexion al backend", font=self.font_sub, text_color=TEXT_SEC).pack(anchor="w", pady=(2, 20))
+        ctk.CTkLabel(frame, text="Configuracion",
+                     font=self.font_title, text_color=TEXT_PRI).pack(anchor="w")
+        ctk.CTkLabel(frame, text="Informacion de conexion",
+                     font=self.font_sub, text_color=TEXT_SEC).pack(anchor="w", pady=(2, 20))
 
         url_card = ctk.CTkFrame(frame, fg_color=BG_CARD, corner_radius=12)
         url_card.pack(fill="x")
 
-        ctk.CTkLabel(url_card, text="URL del backend", font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color=TEXT_PRI).pack(anchor="w", padx=20, pady=(16, 4))
-        url_row = ctk.CTkFrame(url_card, fg_color="transparent")
-        url_row.pack(fill="x", padx=20, pady=(0, 8))
-
-        url_entry = ctk.CTkEntry(url_row, height=38, fg_color=BG_ELEVATED, border_color=BORDER, text_color=TEXT_PRI)
-        url_entry.insert(0, api.base_url)
-        url_entry.pack(side="left", fill="x", expand=True)
-
-        url_status = ctk.CTkLabel(url_card, text="", font=self.font_label, text_color=TEAL)
-        url_status.pack(anchor="w", padx=20, pady=(0, 16))
-
-        def save_url():
-            val = url_entry.get().strip().rstrip("/")
-            if not val: return
-            api.set_base_url(val)
-            if api.check_connection(): url_status.configure(text="Conexion exitosa", text_color=TEAL)
-            else: url_status.configure(text="No se pudo conectar al backend", text_color=PINK)
-            self.after(3000, lambda: self._safe(url_status, text=""))
-
-        ctk.CTkButton(url_row, text="Guardar", font=self.font_btn, fg_color=ACCENT, hover_color="#6355d4", width=90, height=38, command=save_url).pack(side="left", padx=(8, 0))
+        ctk.CTkLabel(url_card, text="Servidor",
+                     font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+                     text_color=TEXT_PRI).pack(anchor="w", padx=20, pady=(16, 4))
+        ctk.CTkLabel(url_card, text=api.base_url,
+                     font=self.font_mono, text_color=TEXT_SEC).pack(anchor="w", padx=20, pady=(0, 16))
 
     # ── Users panel (admin) ────────────────────────────────────────────────────
 
@@ -795,26 +878,32 @@ class App(ctk.CTk):
         frame.pack(fill="both", expand=True, padx=28, pady=28)
 
         ctk.CTkLabel(frame, text="Gestion de usuarios", font=self.font_title, text_color=TEXT_PRI).pack(anchor="w")
-        ctk.CTkLabel(frame, text="Administra las cuentas de acceso", font=self.font_sub, text_color=TEXT_SEC).pack(anchor="w", pady=(2, 20))
+        ctk.CTkLabel(frame, text="Administra las cuentas de acceso", font=self.font_sub, text_color=TEXT_SEC).pack(
+            anchor="w", pady=(2, 20))
 
         new_card = ctk.CTkFrame(frame, fg_color=BG_CARD, corner_radius=12)
         new_card.pack(fill="x", pady=(0, 16))
 
-        ctk.CTkLabel(new_card, text="Crear nuevo usuario", font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"), text_color=TEXT_PRI).pack(anchor="w", padx=20, pady=(16, 8))
+        ctk.CTkLabel(new_card, text="Crear nuevo usuario", font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+                     text_color=TEXT_PRI).pack(anchor="w", padx=20, pady=(16, 8))
 
         form_row = ctk.CTkFrame(new_card, fg_color="transparent")
         form_row.pack(fill="x", padx=20, pady=(0, 8))
 
-        name_e = ctk.CTkEntry(form_row, placeholder_text="Nombre completo", height=36, fg_color=BG_ELEVATED, border_color=BORDER, text_color=TEXT_PRI, width=160)
+        name_e = ctk.CTkEntry(form_row, placeholder_text="Nombre completo", height=36, fg_color=BG_ELEVATED,
+                              border_color=BORDER, text_color=TEXT_PRI, width=160)
         name_e.pack(side="left", padx=(0, 8))
 
-        email_e = ctk.CTkEntry(form_row, placeholder_text="Email", height=36, fg_color=BG_ELEVATED, border_color=BORDER, text_color=TEXT_PRI, width=180)
+        email_e = ctk.CTkEntry(form_row, placeholder_text="Email", height=36, fg_color=BG_ELEVATED, border_color=BORDER,
+                               text_color=TEXT_PRI, width=180)
         email_e.pack(side="left", padx=(0, 8))
 
-        pass_e = ctk.CTkEntry(form_row, placeholder_text="Password", height=36, fg_color=BG_ELEVATED, border_color=BORDER, text_color=TEXT_PRI, show="*", width=140)
+        pass_e = ctk.CTkEntry(form_row, placeholder_text="Password", height=36, fg_color=BG_ELEVATED,
+                              border_color=BORDER, text_color=TEXT_PRI, show="*", width=140)
         pass_e.pack(side="left", padx=(0, 8))
 
-        role_menu = ctk.CTkOptionMenu(form_row, values=["user", "admin"], fg_color=BG_ELEVATED, button_color=ACCENT, width=100, height=36)
+        role_menu = ctk.CTkOptionMenu(form_row, values=["user", "admin"], fg_color=BG_ELEVATED, button_color=ACCENT,
+                                      width=100, height=36)
         role_menu.pack(side="left", padx=(0, 8))
 
         create_status = ctk.CTkLabel(new_card, text="", font=self.font_label, text_color=TEAL)
@@ -824,25 +913,34 @@ class App(ctk.CTk):
 
         def refresh_list():
             for w in users_list.winfo_children(): w.destroy()
-            ctk.CTkLabel(users_list, text=f"{'Nombre':<20} {'Email':<28} {'Rol':<8} {'IG':<18} Estado", font=self.font_mono, text_color=TEXT_SEC).pack(anchor="w", padx=12, pady=(8, 4))
+            ctk.CTkLabel(users_list, text=f"{'Nombre':<20} {'Email':<28} {'Rol':<8} {'IG':<18} Estado",
+                         font=self.font_mono, text_color=TEXT_SEC).pack(anchor="w", padx=12, pady=(8, 4))
             for u in api.get_users():
                 row = ctk.CTkFrame(users_list, fg_color=BG_ELEVATED, corner_radius=8)
                 row.pack(fill="x", padx=12, pady=4)
-                ctk.CTkLabel(row, text=u.get("full_name") or "—", font=self.font_btn, text_color=TEXT_PRI, width=140, anchor="w").pack(side="left", padx=(12, 0))
-                ctk.CTkLabel(row, text=u.get("email", ""), font=self.font_label, text_color=TEXT_SEC, width=200, anchor="w").pack(side="left", padx=(8, 0))
-                ctk.CTkLabel(row, text=u.get("role", ""), font=self.font_label, text_color=ACCENT if u.get("role") == "admin" else TEXT_SEC, width=60).pack(side="left")
-                ctk.CTkLabel(row, text=u.get("ig_username") or "—", font=self.font_mono, text_color=TEXT_SEC, width=120).pack(side="left")
-                ctk.CTkLabel(row, text="Activo" if u.get("is_active") else "Inactivo", font=self.font_label, text_color=TEAL if u.get("is_active") else PINK, width=70).pack(side="left")
+                ctk.CTkLabel(row, text=u.get("full_name") or "—", font=self.font_btn, text_color=TEXT_PRI, width=140,
+                             anchor="w").pack(side="left", padx=(12, 0))
+                ctk.CTkLabel(row, text=u.get("email", ""), font=self.font_label, text_color=TEXT_SEC, width=200,
+                             anchor="w").pack(side="left", padx=(8, 0))
+                ctk.CTkLabel(row, text=u.get("role", ""), font=self.font_label,
+                             text_color=ACCENT if u.get("role") == "admin" else TEXT_SEC, width=60).pack(side="left")
+                ctk.CTkLabel(row, text=u.get("ig_username") or "—", font=self.font_mono, text_color=TEXT_SEC,
+                             width=120).pack(side="left")
+                ctk.CTkLabel(row, text="Activo" if u.get("is_active") else "Inactivo", font=self.font_label,
+                             text_color=TEAL if u.get("is_active") else PINK, width=70).pack(side="left")
 
         def do_create():
             ok, msg = api.create_user(email_e.get().strip(), pass_e.get(), name_e.get().strip(), role_menu.get())
             create_status.configure(text=msg, text_color=TEAL if ok else PINK)
             if ok:
-                name_e.delete(0, "end"); email_e.delete(0, "end"); pass_e.delete(0, "end")
+                name_e.delete(0, "end");
+                email_e.delete(0, "end");
+                pass_e.delete(0, "end")
                 refresh_list()
             self.after(3000, lambda: self._safe(create_status, text=""))
 
-        ctk.CTkButton(new_card, text="Crear usuario", font=self.font_btn, fg_color=ACCENT, hover_color="#6355d4", height=36, width=140, command=do_create).pack(anchor="w", padx=20, pady=(4, 16))
+        ctk.CTkButton(new_card, text="Crear usuario", font=self.font_btn, fg_color=ACCENT, hover_color="#6355d4",
+                      height=36, width=140, command=do_create).pack(anchor="w", padx=20, pady=(4, 16))
         users_list.pack(fill="both", expand=True)
         refresh_list()
 
@@ -852,6 +950,7 @@ class App(ctk.CTk):
         self.current_user = None
         api.token = None
         self._show_login()
+
 
 if __name__ == "__main__":
     app = App()
