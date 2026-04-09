@@ -56,13 +56,8 @@ def save_config(data: dict):
 
 class APIClient:
     def __init__(self):
-        cfg = load_config()
-        self.base_url = cfg.get("backend_url", "http://localhost:8000")
+        self.base_url = "http://40.67.149.227:8000"
         self.token: Optional[str] = None
-
-    def set_base_url(self, url: str):
-        self.base_url = url.rstrip("/")
-        save_config({"backend_url": self.base_url})
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
@@ -423,14 +418,6 @@ class App(ctk.CTk):
         self._setup_fonts()
         self._show_login()
 
-    @staticmethod
-    def _safe(widget, **kwargs):
-        """Wrapper para callbacks de after que evita TclError si el widget ya no existe."""
-        try:
-            widget.configure(**kwargs)
-        except Exception:
-            pass
-
     def _setup_fonts(self):
         self.font_title = ctk.CTkFont(family="Segoe UI", size=22, weight="bold")
         self.font_sub   = ctk.CTkFont(family="Segoe UI", size=13)
@@ -458,13 +445,6 @@ class App(ctk.CTk):
         ctk.CTkLabel(frame, text="Inicia sesion para continuar",
                     font=self.font_sub, text_color=TEXT_SEC).pack(pady=(0, 8))
 
-        ctk.CTkLabel(frame, text="URL del backend", font=self.font_label,
-                    text_color=TEXT_SEC, anchor="w").pack(padx=36, fill="x")
-        url_entry = ctk.CTkEntry(frame, height=36, fg_color=BG_ELEVATED,
-                                border_color=BORDER, text_color=TEXT_PRI)
-        url_entry.insert(0, cfg.get("backend_url", "http://localhost:8000"))
-        url_entry.pack(padx=36, fill="x", pady=(2, 14))
-
         ctk.CTkLabel(frame, text="Correo", font=self.font_label,
                     text_color=TEXT_SEC, anchor="w").pack(padx=36, fill="x")
         email_entry = ctk.CTkEntry(frame, height=38, fg_color=BG_ELEVATED,
@@ -483,15 +463,12 @@ class App(ctk.CTk):
         err_label.pack()
 
         def do_login():
-            backend_url = url_entry.get().strip().rstrip("/")
-            email       = email_entry.get().strip()
-            pwd         = pass_entry.get()
+            email = email_entry.get().strip()
+            pwd   = pass_entry.get()
 
-            if not backend_url or not email or not pwd:
+            if not email or not pwd:
                 err_label.configure(text="Completa todos los campos.")
                 return
-
-            api.set_base_url(backend_url)
 
             if not api.check_connection():
                 err_label.configure(text="No se pudo conectar al backend.")
@@ -534,8 +511,7 @@ class App(ctk.CTk):
         self.content = ctk.CTkFrame(self, fg_color=BG_BASE, corner_radius=0)
         self.content.pack(side="left", fill="both", expand=True)
 
-        nav_items = [("Scraping", self._build_scraping),
-                     ("Configuracion", self._build_config)]
+        nav_items = [("Scraping", self._build_scraping)]
         if user.get("role") == "admin":
             nav_items.append(("Usuarios", self._build_users))
 
@@ -618,7 +594,7 @@ class App(ctk.CTk):
                 ig_status.configure(text="Guardado", text_color=TEAL)
             else:
                 ig_status.configure(text="Error al guardar", text_color=PINK)
-            self.after(2000, lambda: self._safe(ig_status, text=""))
+            self.after(2000, lambda: ig_status.configure(text=""))
 
         ctk.CTkButton(ig_row, text="Guardar", font=self.font_btn,
                      fg_color=ACCENT, hover_color="#6355d4",
@@ -700,29 +676,15 @@ class App(ctk.CTk):
             elif result is False:
                 scrape_status.configure(text="Error en el scraping", text_color=PINK)
 
-        def save_ig_if_needed() -> tuple[bool, str]:
-            """Guarda el ig_username si fue modificado antes de continuar."""
-            val = ig_entry.get().strip().lstrip("@")
-            if not val:
-                return False, ""
-            if val != self.current_user.get("ig_username"):
-                if not api.update_ig_username(val):
-                    return False, val
-                self.current_user["ig_username"] = val
-            return True, val
-
         def start_scraping():
             ok, msg = can_scrape()
             if not ok:
                 log(f"No se puede ejecutar: {msg}")
                 scrape_status.configure(text=msg, text_color=PINK)
                 return
-            saved, ig = save_ig_if_needed()
+            ig = ig_entry.get().strip().lstrip("@")
             if not ig:
                 log("Ingresa tu username de Instagram primero.")
-                return
-            if not saved:
-                log("Error al guardar el username. Verifica tu conexion.")
                 return
             btn_scrape.configure(state="disabled")
             btn_visible.configure(state="disabled")
@@ -735,12 +697,9 @@ class App(ctk.CTk):
             ).start()
 
         def start_visible():
-            saved, ig = save_ig_if_needed()
+            ig = ig_entry.get().strip().lstrip("@")
             if not ig:
                 log("Ingresa tu username de Instagram primero.")
-                return
-            if not saved:
-                log("Error al guardar el username. Verifica tu conexion.")
                 return
             btn_scrape.configure(state="disabled")
             btn_visible.configure(state="disabled")
@@ -796,12 +755,9 @@ class App(ctk.CTk):
             extrae cookies HTTP -> las sube al backend -> cierra Chrome.
             A partir de aqui el scheduler del servidor puede hacer scraping autonomo.
             """
-            saved, ig = save_ig_if_needed()
+            ig = ig_entry.get().strip().lstrip("@")
             if not ig:
                 log("Ingresa tu username de Instagram primero.")
-                return
-            if not saved:
-                log("Error al guardar el username. Verifica tu conexion.")
                 return
 
             btn_scrape.configure(state="disabled")
@@ -875,7 +831,7 @@ class App(ctk.CTk):
                             text="Sesion sincronizada" if ok else "Error al sincronizar",
                             text_color=color
                         )
-                        self.after(4000, lambda: self._safe(scrape_status, text=""))
+                        self.after(4000, lambda: scrape_status.configure(text=""))
 
                     self.after(0, lambda: _restore(TEAL if ok else PINK))
 
@@ -937,7 +893,7 @@ class App(ctk.CTk):
                 url_status.configure(text="Conexion exitosa", text_color=TEAL)
             else:
                 url_status.configure(text="No se pudo conectar al backend", text_color=PINK)
-            self.after(3000, lambda: self._safe(url_status, text=""))
+            self.after(3000, lambda: url_status.configure(text=""))
 
         ctk.CTkButton(url_row, text="Guardar", font=self.font_btn,
                      fg_color=ACCENT, hover_color="#6355d4",
@@ -1031,7 +987,7 @@ class App(ctk.CTk):
                 email_e.delete(0, "end")
                 pass_e.delete(0, "end")
                 refresh_list()
-            self.after(3000, lambda: self._safe(create_status, text=""))
+            self.after(3000, lambda: create_status.configure(text=""))
 
         ctk.CTkButton(new_card, text="Crear usuario", font=self.font_btn,
                      fg_color=ACCENT, hover_color="#6355d4",
