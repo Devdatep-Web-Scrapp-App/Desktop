@@ -17,7 +17,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
-from PIL import Image, ImageTk
+from PIL import Image
 
 # ── Configuracion ──────────────────────────────────────────────────────────────
 
@@ -36,10 +36,10 @@ def _assets_dir() -> str:
     return os.path.join(base, "assets")
 
 
-def _load_image(filename: str, size: tuple) -> "ImageTk.PhotoImage":
+def _load_image(filename: str, size: tuple) -> "ctk.CTkImage":
     path = os.path.join(_assets_dir(), filename)
-    img = Image.open(path).convert("RGBA").resize(size, Image.Resampling.LANCZOS)
-    return ImageTk.PhotoImage(img)
+    img  = Image.open(path).convert("RGBA")
+    return ctk.CTkImage(light_image=img, dark_image=img, size=size)
 
 
 # ── Colores ────────────────────────────────────────────────────────────────────
@@ -432,7 +432,8 @@ class App(ctk.CTk):
         super().__init__()
         self.title("RRSS Analytics")
         self.geometry("900x620")
-        self.resizable(False, False)
+        self.resizable(True, True)
+        self.after(0, lambda: self.state("zoomed")) # type: ignore
         self.configure(fg_color=BG_BASE)
 
         self.current_user = None
@@ -588,14 +589,22 @@ class App(ctk.CTk):
         sidebar.pack_propagate(False)
 
         ctk.CTkLabel(sidebar, text="RRSS", font=self.font_title, text_color=ACCENT).pack(pady=(28, 4))
-        ctk.CTkLabel(sidebar, text="Analytics", font=self.font_sub, text_color=TEXT_SEC).pack(pady=(0, 32))
+        ctk.CTkLabel(sidebar, text="Analytics", font=self.font_sub, text_color=TEXT_SEC).pack(pady=(0, 8))
+        try:
+            sidebar_logo = _load_image("logo.png", (48, 48))
+            self._sidebar_logo = sidebar_logo
+            ctk.CTkLabel(sidebar, image=sidebar_logo, text="").pack(pady=(0, 20))
+        except Exception as e:
+            print(f"Error logo sidebar: {e}")
+            ctk.CTkFrame(sidebar, fg_color="transparent", height=20).pack()
 
         self.content = ctk.CTkFrame(self, fg_color=BG_BASE, corner_radius=0)
         self.content.pack(side="left", fill="both", expand=True)
 
-        nav_items = [("Scraping", self._build_scraping)]
         if user.get("role") == "admin":
-            nav_items.append(("Usuarios", self._build_users))
+            nav_items = [("Usuarios", self._build_users)]
+        else:
+            nav_items = [("Scraping", self._build_scraping)]
 
         nav_btns = {}
 
@@ -619,8 +628,9 @@ class App(ctk.CTk):
                       hover_color=BG_ELEVATED, height=32, command=self._logout).place(relx=0.5, rely=0.94,
                                                                                       anchor="center")
 
-        switch("Scraping", self._build_scraping)
-        nav_btns["Scraping"].configure(fg_color=ACCENT, text_color=TEXT_PRI)
+        first_name, first_builder = nav_items[0]
+        switch(first_name, first_builder)
+        nav_btns[first_name].configure(fg_color=ACCENT, text_color=TEXT_PRI)
 
     # ── Scraping panel ─────────────────────────────────────────────────────────
 
@@ -661,7 +671,7 @@ class App(ctk.CTk):
                 ig_status.configure(text="Guardado", text_color=TEAL)
             else:
                 ig_status.configure(text="Error al guardar", text_color=PINK)
-            self.after(2000, lambda: self._safe(ig_status, text=""))
+            self.after(2000, lambda: self._safe(ig_status, text="")) # type: ignore
 
         ctk.CTkButton(ig_row, text="Guardar", font=self.font_btn, fg_color=ACCENT, hover_color="#6355d4", width=90,
                       height=38, command=save_ig).pack(side="left", padx=(8, 0))
@@ -731,7 +741,7 @@ class App(ctk.CTk):
                                     "1. Inicia sesion en Instagram en la ventana de Chrome.\n2. Cuando veas tu perfil cargado, presiona OK en este mensaje para continuar.")
                 ev.set()
 
-            self.after(0, ask)
+            self.after(0, ask) # type: ignore
             ev.wait()  # Pausa el proceso en background hasta dar OK
 
         def can_scrape() -> tuple[bool, str]:
@@ -742,14 +752,22 @@ class App(ctk.CTk):
             return True, ""
 
         def on_done(result):
-            self.after(0, lambda: set_ui_state("normal"))
+            self.after(0, lambda: set_ui_state("normal")) # type: ignore
             if result is True:
                 self.scraping_count_today += 1
                 self.last_scrape_time = datetime.now()
                 self.after(0, lambda: scrape_status.configure(text=f"Completado ({self.scraping_count_today}/3 hoy)",
-                                                              text_color=TEAL))
+                                                              text_color=TEAL)) # type: ignore
             elif result is False:
-                self.after(0, lambda: scrape_status.configure(text="Error en el scraping", text_color=PINK))
+                self.after(0, lambda: scrape_status.configure(text="Error en el scraping", text_color=PINK)) # type: ignore
+
+        def on_sync_done(result):
+            """Callback para sincronizacion de cookies — no incrementa el contador de scraping."""
+            self.after(0, lambda: set_ui_state("normal")) # type: ignore
+            if result is True:
+                self.after(0, lambda: scrape_status.configure(text="Sesion sincronizada", text_color=TEAL)) # type: ignore
+            elif result is False:
+                self.after(0, lambda: scrape_status.configure(text="Error al sincronizar", text_color=PINK)) # type: ignore
 
         def save_ig_if_needed() -> tuple[bool, str]:
             val = ig_entry.get().strip().lstrip("@")
@@ -831,16 +849,16 @@ class App(ctk.CTk):
                         log("Sesion activa confirmada. Extrayendo cookies...")
                     except TimeoutException:
                         log("No se detecto sesion activa. Intenta de nuevo.")
-                        self.after(0, lambda: on_done(False))
+                        self.after(0, lambda: on_sync_done(False)) # type: ignore
                         return
 
                     ok, msg = extract_and_upload_cookies(driver, log)
                     log(msg)
-                    self.after(0, lambda: on_done(ok))
+                    self.after(0, lambda: on_sync_done(ok)) # type: ignore
 
                 except Exception as e:
                     log(f"Error: {e}")
-                    self.after(0, lambda: on_done(False))
+                    self.after(0, lambda: on_sync_done(False)) # type: ignore
                 finally:
                     try:
                         driver.quit()
@@ -911,30 +929,35 @@ class App(ctk.CTk):
 
         users_list = ctk.CTkScrollableFrame(frame, fg_color=BG_CARD, corner_radius=12)
 
+        COL_W = [160, 220, 70, 130, 80]
+
         def refresh_list():
             for w in users_list.winfo_children(): w.destroy()
-            ctk.CTkLabel(users_list, text=f"{'Nombre':<20} {'Email':<28} {'Rol':<8} {'IG':<18} Estado",
-                         font=self.font_mono, text_color=TEXT_SEC).pack(anchor="w", padx=12, pady=(8, 4))
+            header = ctk.CTkFrame(users_list, fg_color="transparent")
+            header.pack(fill="x", padx=12, pady=(8, 2))
+            for i, (txt, w) in enumerate(zip(["Nombre", "Email", "Rol", "Instagram", "Estado"], COL_W)):
+                ctk.CTkLabel(header, text=txt, font=self.font_label,
+                             text_color=TEXT_SEC, width=w, anchor="w").grid(row=0, column=i, padx=(4, 0))
             for u in api.get_users():
                 row = ctk.CTkFrame(users_list, fg_color=BG_ELEVATED, corner_radius=8)
-                row.pack(fill="x", padx=12, pady=4)
-                ctk.CTkLabel(row, text=u.get("full_name") or "—", font=self.font_btn, text_color=TEXT_PRI, width=140,
-                             anchor="w").pack(side="left", padx=(12, 0))
-                ctk.CTkLabel(row, text=u.get("email", ""), font=self.font_label, text_color=TEXT_SEC, width=200,
-                             anchor="w").pack(side="left", padx=(8, 0))
-                ctk.CTkLabel(row, text=u.get("role", ""), font=self.font_label,
-                             text_color=ACCENT if u.get("role") == "admin" else TEXT_SEC, width=60).pack(side="left")
-                ctk.CTkLabel(row, text=u.get("ig_username") or "—", font=self.font_mono, text_color=TEXT_SEC,
-                             width=120).pack(side="left")
-                ctk.CTkLabel(row, text="Activo" if u.get("is_active") else "Inactivo", font=self.font_label,
-                             text_color=TEAL if u.get("is_active") else PINK, width=70).pack(side="left")
+                row.pack(fill="x", padx=12, pady=3)
+                vals = [
+                    (u.get("full_name") or "—",  self.font_btn,   TEXT_PRI),
+                    (u.get("email", ""),          self.font_label, TEXT_SEC),
+                    (u.get("role", ""),           self.font_label, ACCENT if u.get("role") == "admin" else TEXT_SEC),
+                    (u.get("ig_username") or "—", self.font_mono,  TEXT_SEC),
+                    ("Activo" if u.get("is_active") else "Inactivo", self.font_label, TEAL if u.get("is_active") else PINK),
+                ]
+                for i, (txt, font, color) in enumerate(vals):
+                    ctk.CTkLabel(row, text=txt, font=font, text_color=color,
+                                 width=COL_W[i], anchor="w").grid(row=0, column=i, padx=(4, 0), pady=8)
 
         def do_create():
             ok, msg = api.create_user(email_e.get().strip(), pass_e.get(), name_e.get().strip(), role_menu.get())
             create_status.configure(text=msg, text_color=TEAL if ok else PINK)
             if ok:
-                name_e.delete(0, "end");
-                email_e.delete(0, "end");
+                name_e.delete(0, "end")
+                email_e.delete(0, "end")
                 pass_e.delete(0, "end")
                 refresh_list()
             self.after(3000, lambda: self._safe(create_status, text=""))
